@@ -19,10 +19,7 @@ class Sensör:
         cv2.rectangle(self.Maske,(Koordinat1.x,Koordinat1.y),(Koordinat2.x,Koordinat2.y),255,cv2.FILLED)
 
     def changeStatus(self,bool):
-        if bool == True:
-            self.Status = True
-        elif bool==False:
-            self.Status = False
+        self.Status = bool
 
 
 def main():
