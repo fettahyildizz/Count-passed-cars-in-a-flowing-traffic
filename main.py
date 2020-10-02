@@ -1,95 +1,93 @@
 import cv2
 import numpy as np
-import enum
 
 class Koordinat:
-    def __init__(self, x, y):
+    def __init__(self,x,y):
         self.x = x
         self.y = y
-
-class Sensör:
-    def __init__(self, Koordinat1, Koordinat2, Uzunluk, Genislik):
+class Sensör():
+    def __init__(self,Koordinat1,Koordinat2,w_cropped,h_cropped,serit):
         self.Koordinat1 = Koordinat1
         self.Koordinat2 = Koordinat2
-        self.Genislik = Genislik
-        self.Status = False
-        self.Uzunluk = Uzunluk
-        self.Maske = np.zeros((Uzunluk,Genislik,1),np.uint8)
-        self.Area = abs((self.Koordinat1.x-self.Koordinat2.x)*(self.Koordinat1.y-self.Koordinat2.y))
-        cv2.rectangle(self.Maske,(Koordinat1.x,Koordinat1.y),(Koordinat2.x,Koordinat2.y),255,cv2.FILLED)
+        self.w = abs(Koordinat1.x-Koordinat2.x)
+        self.h = abs(Koordinat1.y-Koordinat2.y)
+        self.area = abs((Koordinat2.x-Koordinat1.x)*(Koordinat2.y-Koordinat1.y))
+        self.status = False
+        self.Maske = np.zeros((w_cropped,h_cropped,1),np.uint8)
+        self.counter = 0
+        self.serit=serit
+        cv2.rectangle(self.Maske,(Koordinat1.x,Koordinat1.y),(Koordinat2.x,Koordinat2.y),(255,255,255),-1)
 
-    def changeStatus(self,bool):
-        self.Status = bool
+    def changeStatus(self,status):
+        self.status=status
 
+video_r = cv2.VideoCapture("Relaxing highway traffic.mp4")
+backSub = cv2.createBackgroundSubtractorMOG2()
+kernel1=cv2.getStructuringElement(cv2.MORPH_RECT,(5,5))
 
-def main():
-    video_r = cv2.VideoCapture("Relaxing highway traffic.mp4")
-    fgbg = cv2.createBackgroundSubtractorMOG2()
+Sensör2 = Sensör(Koordinat(350,210),Koordinat(470,300),320,1280,2)
+Sensör1 = Sensör(Koordinat(120,210),Koordinat(240,300),320,1280,1)
+Sensör3 = Sensör(Koordinat(830,210),Koordinat(910,270),320,1280,3)
+Sensör4 = Sensör(Koordinat(980,210),Koordinat(1090,300),320,1280,4)
+Sensör_list = [Sensör1,Sensör2,Sensör3,Sensör4]
+sum_counter = 0
 
-    Sensor1 = Sensör(Koordinat(140,180),Koordinat(255,240),250,1080)
-    Sensor2 = Sensör(Koordinat(330,180),Koordinat(420,240),250,1080)
-    Sensor3 = Sensör(Koordinat(650,180),Koordinat(730,240),250,1080)
-    Sensor4 = Sensör(Koordinat(820,180),Koordinat(910,240),250,1080)
-    Sensor_vector = [Sensor1, Sensor2, Sensor3, Sensor4]
-    ctr = [0] * len(Sensor_vector)
+while(1):
+    ret,kare = video_r.read()
 
-    while(1):
-        ret, Kare = video_r.read()
+    cropped_image = kare[400:,:]
+    filtered_image = backSub.apply(cropped_image)
+    filtered_image = cv2.morphologyEx(filtered_image,cv2.MORPH_OPEN,kernel1)
 
-        cropped_Kare = Kare[350:600,100:1180]
-        mask = fgbg.apply(cropped_Kare)
+    ret,filtered_image = cv2.threshold(filtered_image,127,255,cv2.THRESH_BINARY)
+    copied_image = cropped_image.copy()
 
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT,(5,5))
-        cleared_im = cv2.morphologyEx(mask,cv2.MORPH_OPEN,kernel)
-        __, cleared_im = cv2.threshold(cleared_im, 127, 255, cv2.THRESH_BINARY)
+    contoured_img = np.zeros((filtered_image.shape[0],filtered_image.shape[1],1),np.uint8)
 
-        sonuc = cropped_Kare.copy()
-        black_image = np.zeros((cropped_Kare.shape[0],cropped_Kare.shape[1],1),np.uint8)
-
-        contours,___ = cv2.findContours(cleared_im,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
-        for cnt in contours:
+    _,thresh = cv2.threshold(filtered_image,80,255,0)
+    contours,__ = cv2.findContours(thresh,1,2)
+    for cnt in contours:
+        if cv2.contourArea(cnt)>1500:
             x,y,w,h = cv2.boundingRect(cnt)
-            if w>20 and h>30:
+            cv2.rectangle(copied_image,(x,y),(x+w,y+h),(0,255,0),3)
+            cv2.rectangle(contoured_img,(x,y),(x+w,y+h),255,-1)
 
-                cv2.rectangle(sonuc,(x,y),(x+w,y+h),(0,255,0),4)
-                cv2.rectangle(black_image,(x,y),(x+w,y+h),(255),thickness=cv2.FILLED)
+    for i in Sensör_list:
+        cv2.rectangle(copied_image, (i.Koordinat1.x, i.Koordinat1.y),
+                      (i.Koordinat2.x, i.Koordinat2.y), (0, 255, 0), -1)
 
+    for i in Sensör_list:
+        mask_combined = cv2.bitwise_and(contoured_img, contoured_img, mask=i.Maske)
+        rate=np.sum(mask_combined)/i.area
 
-        Sensor2mask_sonuc = []
-        Sensor2Oran = []
-
-        for i in range(4):
-            Sensor2mask_sonuc.append(cv2.bitwise_and(black_image, black_image, mask=Sensor_vector[i].Maske))
-            Sensor2sum = np.sum(Sensor2mask_sonuc[i] == 255)
-            Sensor2Oran.append(Sensor2sum / Sensor_vector[i].Area)
-
-        for i in range(4):
-            if Sensor2Oran[i] >= 0.75:
-                if Sensor_vector[i].Status==False:
-                    cv2.rectangle(sonuc,(Sensor_vector[i].Koordinat1.x,Sensor_vector[i].Koordinat1.y),(Sensor_vector[i].Koordinat2.x,Sensor_vector[i].Koordinat2.y),(0,255,0),-1)
-                    Sensor_vector[i].changeStatus(True)
-
-                    ctr[i]+=1
-
-                else:
-                    cv2.rectangle(sonuc,(Sensor_vector[i].Koordinat1.x,Sensor_vector[i].Koordinat1.y),(Sensor_vector[i].Koordinat2.x,Sensor_vector[i].Koordinat2.y),(0,255,0),-1)
-
+        if rate>200:
+            if i.status==False:
+                cv2.rectangle(copied_image, (i.Koordinat1.x, i.Koordinat1.y),
+                              (i.Koordinat2.x, i.Koordinat2.y), (0, 0, 255), -1)
+                i.changeStatus(True)
+                i.counter+=1
+                sum_counter+=1
+                print("Toplam gecen arac sayisi: "+str(sum_counter))
             else:
-                cv2.rectangle(sonuc,(Sensor_vector[i].Koordinat1.x,Sensor_vector[i].Koordinat1.y),(Sensor_vector[i].Koordinat2.x,Sensor_vector[i].Koordinat2.y),(0,0,255),-1)
-                Sensor_vector[i].changeStatus(False)
+                cv2.rectangle(copied_image, (i.Koordinat1.x, i.Koordinat1.y),
+                              (i.Koordinat2.x, i.Koordinat2.y), (0, 0, 255), -1)
+                i.changeStatus(True)
+        else:
+            cv2.rectangle(copied_image, (i.Koordinat1.x, i.Koordinat1.y),
+                          (i.Koordinat2.x, i.Koordinat2.y), (0, 255, 0), -1)
+            i.changeStatus(False)
 
-        for i in range(4):
-            cv2.putText(sonuc, str(ctr[i]), (Sensor_vector[i].Koordinat1.x, Sensor_vector[i].Koordinat1.y + 60),cv2.FONT_HERSHEY_PLAIN, 4, (255, 255, 255))
+    for i in Sensör_list:
+        cv2.putText(copied_image, str(i.counter), (i.Koordinat1.x, i.Koordinat1.y + 60), cv2.FONT_ITALIC, 2, (255, 255, 255), 4)
 
-        cv2.imshow("rectangle",sonuc)
+    cv2.imshow("mask_combined",mask_combined)
+    cv2.imshow("cropped image",copied_image)
 
-        k=cv2.waitKey(30) & 0xff
+    k=cv2.waitKey(30) & 0xff
 
-        if k==27:
-            break
+    if k==27:
+        break
 
-    video_r.release()
-    cv2.destroyAllWindows()
+video_r.release()
+cv2.destroyAllWindows()
 
-if __name__=="__main__":
-    main()
